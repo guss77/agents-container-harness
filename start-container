@@ -36,7 +36,8 @@ error_handler() {
 
 trap error_handler EXIT
 
-basedir="$(dirname $(realpath $0))"
+[ -e "$0" ] && execute="$(realpath $0)" || execute="$(command -v $0)"
+basedir="$(dirname "${execute}")"
 cmd="$(basename $(realpath -s $0))"
 rootdir="${PWD}"
 

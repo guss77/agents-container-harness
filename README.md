@@ -47,11 +47,20 @@ cd ~/Documents/Projects
 # or
 ~/path/to/agent-container/opencode
 
-# 5. Work inside /home/aicode/Projects (your project directory)
+# 4. Work inside /home/aicode/Projects (your project directory)
 #    Sessions persist under ./aicontainer-config/
 ```
 
 > ⚠️  **Do not commit the `aicontainer-config/` directory this scripts create.** This contains provider credentials and local session state.
+
+### Optional - "install" the agent container commands into the PATH of your user account
+
+Locate your user's local executable directory (usually `~/.local/bin` or `~/bin`) and create symbolic links from the `start-container` command (like the local symbolic links). For example:
+
+```
+ln -s ${PWD}/start-container ~/.local/bin/opencode
+ln -s ${PWD}/start-container ~/.local/bin/claude
+```
 
 ## Usage
 
