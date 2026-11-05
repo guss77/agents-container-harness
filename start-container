@@ -1,0 +1,112 @@
+#!/bin/bash -e
+
+usage() {
+	cat >&2 <<EOF
+AI Coding Agent Container Harness
+
+Usage:
+	$0 [-r <base-dir>] [-s|-f] [options]
+
+Options:
+	-r <base-dir> : mount the specified directory, in the container, as the
+					/home/aicode/Projects directory, that is the CLI's working
+					directory. If not set, use the user's current directory.
+	-s : skip rebuilding the container, even if it is stale.
+	-f : force rebuilding the container, even if it is not stale.
+	-n : force a new session (not restoring the previous session)
+	-S : do not run in a SCREEN attachable terminal. This makes the session
+		 fragile in that it will not survive the terminal application closing
+		 and cannot be reattached to from a different terminal.
+	-d : start bash debug tracing for this script.
+	-? | -h : Show this usage screen
+EOF
+	exit 0
+}
+
+error_handler() {
+	ret="$?"
+	[ "$ret" == 0 ] && return
+	if ! [[ "$BASH_COMMAND" =~ "exit " ]]; then # don't add extra complications for "exit with error" commands
+		echo "ERROR: Command '$BASH_COMMAND' failed on line ${BASH_LINENO[0]} with exit code $ret"
+	fi
+	echo "Press any key to continue..."
+	read -n1
+	exit $ret
+}
+
+trap error_handler EXIT
+
+basedir="$(dirname $(realpath $0))"
+cmd="$(basename $(realpath -s $0))"
+rootdir="${PWD}"
+
+SKIP_REBUILD=
+FORCE_REBUILD=
+NEW_SESSION=
+FORCE_SCREEN=yes
+SESSION_NAME=aicode
+IMAGE_NAME=aicode:latest
+AICODE_ARGS=()
+CHOME=/home/aicode
+CLIARGS=( "" "$@" ) # OPTIND is 1 based
+while [ "$OPTIND" -lt "${#CLIARGS[*]}" ]; do
+	if getopts "r:sfnSd" OPT; then
+		case $OPT in
+			r) rootdir=$(readlink -f "${OPTARG/#\~/$HOME}"); SESSION_NAME="$(basename ${rootdir})";;
+			s) SKIP_REBUILD=yes;;
+			f) FORCE_REBUILD=yes;;
+			n) NEW_SESSION=yes;;
+			S) FORCE_SCREEN=;;
+			d) set -x;;
+			?|h) usage;;
+			*) echo "invalid arg $OPT" >&2; exit 5;;
+		esac
+	else
+		AICODE_ARGS+=("${CLIARGS[$OPTIND]}")
+		OPTIND=$(( $OPTIND + 1 ))
+	fi
+done
+
+[ -z "$STY" -a -n "$FORCE_SCREEN" -a -e "$(command -v screen)" ] && exec bash -xc "cd $PWD && screen -dRq ${cmd}_${SESSION_NAME}_screen $0 $*"
+
+mkdir -p $rootdir/aicontainer-config \
+	$rootdir/aicontainer-config/opencode/shared \
+	$rootdir/aicontainer-config/opencode/state
+
+if [ -z "$SKIP_REBUILD" ]; then
+	needs_build=$FORCE_REBUILD
+	image_created=$(podman inspect --format '{{.Created}}' $IMAGE_NAME 2>/dev/null) || needs_build=yes
+	if [ -z "$needs_build" ]; then
+		image_epoch=$(date -d "${image_created% *}" +%s)
+		now_epoch=$(date +%s)
+		age_days=$(( (now_epoch - image_epoch) / 86400 ))
+		[ "$age_days" -ge 7 ] && needs_build=yes
+	fi
+	if [ -n "$needs_build" ]; then
+		( cd "$basedir"; podman build -t $IMAGE_NAME -f Dockerfile . )
+	fi
+	if [ -f $rootdir/aicontainer-config/Dockerfile ]; then
+		IMAGE_NAME=aicode-${SESSION_NAME}:latest
+		( cd "$rootdir/aicontainer-config"; podman build -t $IMAGE_NAME -f Dockerfile . )
+	fi
+fi
+
+if [ -d $rootdir/.ssh ]; then
+	MOUNT_SSH="-v $rootdir/.ssh/:${CHOME}/.ssh/:ro"
+fi
+podman run -ti --rm --userns=keep-id --name "${cmd}-${SESSION_NAME}" \
+	-v $rootdir/:${CHOME}/Projects:Z \
+	-v $rootdir/aicontainer-config/:${CHOME}/.config:Z \
+	-v $rootdir/aicontainer-config/opencode/shared/:${CHOME}/.local/share/opencode:Z \
+	-v $rootdir/aicontainer-config/opencode/state/:${CHOME}/.local/state/opencode:Z \
+	$MOUNT_SSH \
+	${NEW_SESSION:+-e NEW_SESSION=1} \
+	-e AI_COMMAND=$cmd \
+	$CARGS \
+	$IMAGE_NAME "${AICODE_ARGS[@]}"
+ret=$?
+if ((ret > 0)); then
+	echo "Error detected. Press ENTER to continue"
+	read -n1
+fi
+exit $ret

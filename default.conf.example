@@ -1,0 +1,7 @@
+## These are for AWS Bedrock. If you are using something else, set it differently, possibly only 
+## in your local aicontainer-config/.env
+ANTHROPIC_MODEL=global.anthropic.claude-opus-4-8
+ANTHROPIC_SMALL_FAST_MODEL=us.anthropic.claude-haiku-4-5-20251001-v1:0
+
+#GIT_EMAIL="agents-containers-harness@geek.co.il"
+#GIT_NAME="Change Me!"
