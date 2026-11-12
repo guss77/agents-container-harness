@@ -84,7 +84,7 @@ if [ -z "$SKIP_REBUILD" ]; then
 		[ "$age_days" -ge 7 ] && needs_build=yes
 	fi
 	if [ -n "$needs_build" ]; then
-		( cd "$basedir"; podman build -t $IMAGE_NAME -f Dockerfile . )
+		( cd "$basedir"; podman build ${FORCE_REBUILD:+--pull=always} -t $IMAGE_NAME -f Dockerfile . )
 	fi
 	if [ -f $rootdir/aicontainer-config/Dockerfile ]; then
 		IMAGE_NAME=aicode-${SESSION_NAME}:latest
